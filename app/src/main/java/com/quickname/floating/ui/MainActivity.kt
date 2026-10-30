@@ -40,14 +40,15 @@ import java.nio.ByteBuffer
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
-val DarkBackground = Color(0xFF090D1A)
-val SurfaceDark = Color(0xFF10172A)
-val CardBorder = Color(0xFF1E293B)
-val ElectricBlue = Color(0xFF0066FF)
-val ElectricBlueLight = Color(0xFF38BDF8)
-val AccentGreen = Color(0xFF10B981)
-val TextPrimary = Color(0xFFF1F5F9)
-val TextSecondary = Color(0xFF94A3B8)
+// Private Colors to prevent any conflict with other files
+private val DarkBackground = Color(0xFF090D1A)
+private val SurfaceDark = Color(0xFF10172A)
+private val CardBorder = Color(0xFF1E293B)
+private val ElectricBlue = Color(0xFF0066FF)
+private val ElectricBlueLight = Color(0xFF38BDF8)
+private val AccentGreen = Color(0xFF10B981)
+private val TextPrimary = Color(0xFFF1F5F9)
+private val TextSecondary = Color(0xFF94A3B8)
 
 object TotpGenerator {
     private const val BASE32_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
