@@ -9,7 +9,7 @@
     <application
         android:name=".QuickNameApp"
         android:allowBackup="true"
-        android:label="QuickName"
+        android:label="Easy Work"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.NoActionBar">
 
