@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
@@ -75,6 +76,12 @@ fun MainDashboardScreen(prefs: PreferencesManager) {
     var enableFirst by remember { mutableStateOf(prefs.enableFirstName) }
     var enableLast by remember { mutableStateOf(prefs.enableLastName) }
 
+    // Custom Names State
+    var customFirstInput by remember { mutableStateOf("") }
+    var customLastInput by remember { mutableStateOf("") }
+    var customFirstCount by remember { mutableIntStateOf(prefs.getCustomFirstNames().size) }
+    var customLastCount by remember { mutableIntStateOf(prefs.getCustomLastNames().size) }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -105,12 +112,13 @@ fun MainDashboardScreen(prefs: PreferencesManager) {
                 .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+            // Permissions
             item {
                 Text("Permissions", fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = ElectricBlueLight)
                 Spacer(modifier = Modifier.height(6.dp))
                 PermissionCard(
                     title = "Display Over Other Apps",
-                    isGranted = hasOverlayPermission,
+                    isGranted = Settings.canDrawOverlays(context),
                     onAction = {
                         val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}"))
                         context.startActivity(intent)
@@ -121,7 +129,7 @@ fun MainDashboardScreen(prefs: PreferencesManager) {
             item {
                 PermissionCard(
                     title = "Accessibility AutoFill",
-                    isGranted = isAccessibilityActive,
+                    isGranted = QuickNameAccessibilityService.isServiceRunning,
                     onAction = {
                         val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
                         context.startActivity(intent)
@@ -129,9 +137,9 @@ fun MainDashboardScreen(prefs: PreferencesManager) {
                 )
             }
 
+            // Overlay Controller
             item {
                 Text("Overlay Controller", fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = ElectricBlueLight)
-                Spacer(modifier = Modifier.height(6.dp))
                 Card(
                     colors = CardDefaults.cardColors(containerColor = SurfaceDark),
                     shape = RoundedCornerShape(12.dp),
@@ -145,7 +153,7 @@ fun MainDashboardScreen(prefs: PreferencesManager) {
                         Text(if (isFloatingServiceRunning) "Overlay Running" else "Overlay Stopped", color = TextPrimary)
                         Button(
                             onClick = {
-                                if (!hasOverlayPermission) {
+                                if (!Settings.canDrawOverlays(context)) {
                                     val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}"))
                                     context.startActivity(intent)
                                     return@Button
@@ -171,6 +179,77 @@ fun MainDashboardScreen(prefs: PreferencesManager) {
                 }
             }
 
+            // Custom Names Import Card (নতুন ফিচার!)
+            item {
+                Text("Import Custom Names (নিজের নাম ইমপোর্ট করুন)", fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = ElectricBlueLight)
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.border(1.dp, CardBorder, RoundedCornerShape(12.dp))
+                ) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            "কমা (,) অথবা নতুন লাইনে নাম লিখে নিচে সেভ করুন। অ্যাপটি স্বয়ংক্রিয়ভাবে আপনার নামগুলো ডাটাবেসে নিয়ে নেবে।",
+                            color = TextSecondary,
+                            fontSize = 12.sp
+                        )
+
+                        OutlinedTextField(
+                            value = customFirstInput,
+                            onValueChange = { customFirstInput = it },
+                            label = { Text("First Names (কমা বা লাইনে লিখুন)") },
+                            placeholder = { Text("Alex, Ryan, Fahim, Tanvir") },
+                            modifier = Modifier.fillMaxWidth(),
+                            maxLines = 3
+                        )
+
+                        OutlinedTextField(
+                            value = customLastInput,
+                            onValueChange = { customLastInput = it },
+                            label = { Text("Last Names (কমা বা লাইনে লিখুন)") },
+                            placeholder = { Text("Smith, Khan, Ahmed, Hossain") },
+                            modifier = Modifier.fillMaxWidth(),
+                            maxLines = 3
+                        )
+
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(
+                                onClick = {
+                                    var addedCount = 0
+                                    if (customFirstInput.isNotBlank()) {
+                                        val names = customFirstInput.split(",", "\n").map { it.trim() }.filter { it.isNotEmpty() }
+                                        names.forEach { prefs.addCustomFirstName(it) }
+                                        addedCount += names.size
+                                        customFirstInput = ""
+                                    }
+                                    if (customLastInput.isNotBlank()) {
+                                        val names = customLastInput.split(",", "\n").map { it.trim() }.filter { it.isNotEmpty() }
+                                        names.forEach { prefs.addCustomLastName(it) }
+                                        addedCount += names.size
+                                        customLastInput = ""
+                                    }
+                                    customFirstCount = prefs.getCustomFirstNames().size
+                                    customLastCount = prefs.getCustomLastNames().size
+                                    Toast.makeText(context, "$addedCount টি নাম সেভ হয়েছে!", Toast.LENGTH_SHORT).show()
+                                },
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue)
+                            ) {
+                                Text("Import Names")
+                            }
+                        }
+
+                        Text(
+                            "সংরক্ষিত আছে: ফার্স্ট নেম ($customFirstCount টি), লাস্ট নেম ($customLastCount টি)",
+                            color = AccentGreen,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+            }
+
+            // Configuration
             item {
                 Text("Configuration", fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = ElectricBlueLight)
                 Card(
@@ -196,6 +275,7 @@ fun MainDashboardScreen(prefs: PreferencesManager) {
                 }
             }
 
+            // Recent Names
             item {
                 Text("Recent Names", fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = ElectricBlueLight)
             }
