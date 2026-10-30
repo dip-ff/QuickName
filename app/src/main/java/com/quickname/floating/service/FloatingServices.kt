@@ -19,8 +19,6 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
-import android.text.Editable
-import android.text.TextWatcher
 import android.util.DisplayMetrics
 import android.view.Gravity
 import android.view.MotionEvent
@@ -29,7 +27,6 @@ import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.animation.OvershootInterpolator
-import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
@@ -71,7 +68,7 @@ class QuickNameAccessibilityService : AccessibilityService() {
         findEditableNodes(rootNode, editableNodes)
 
         if (editableNodes.isEmpty()) {
-            return fallbackToClipboard(name.fullName, "No editable fields found")
+            return fallbackToClipboard(name.fullName, "No editable fields found in other app")
         }
 
         var focusedIndex = editableNodes.indexOfFirst { it.isFocused }
@@ -100,24 +97,14 @@ class QuickNameAccessibilityService : AccessibilityService() {
         }
     }
 
-    fun fill2FACode(code: String): Boolean {
-        val rootNode = rootInActiveWindow ?: return fallbackToClipboard(code, "No active window")
-        val editableNodes = mutableListOf<AccessibilityNodeInfo>()
-        findEditableNodes(rootNode, editableNodes)
-
-        val targetNode = editableNodes.find { it.isFocused } ?: editableNodes.firstOrNull()
-        if (targetNode != null && setText(targetNode, code)) {
-            showToast("2FA Filled: $code")
-            copyToClipboard(code)
-            return true
-        }
-        return fallbackToClipboard(code, "Copied 2FA Code")
-    }
-
     fun fillPassword(password: String): Boolean {
         val rootNode = rootInActiveWindow ?: return fallbackToClipboard(password, "No active window")
         val editableNodes = mutableListOf<AccessibilityNodeInfo>()
         findEditableNodes(rootNode, editableNodes)
+
+        if (editableNodes.isEmpty()) {
+            return fallbackToClipboard(password, "No password field found")
+        }
 
         val targetNode = editableNodes.find { it.isFocused } ?: editableNodes.firstOrNull()
         if (targetNode != null && setText(targetNode, password)) {
@@ -130,7 +117,13 @@ class QuickNameAccessibilityService : AccessibilityService() {
 
     private fun findEditableNodes(node: AccessibilityNodeInfo?, result: MutableList<AccessibilityNodeInfo>) {
         if (node == null) return
-        if (node.isEditable && node.isVisibleToUser) result.add(node)
+
+        // IMPORTANT: Never autofill into our own QuickName floating window!
+        if (node.packageName?.toString() == packageName) return
+
+        if (node.isEditable && node.isVisibleToUser) {
+            result.add(node)
+        }
         for (i in 0 until node.childCount) {
             findEditableNodes(node.getChild(i), result)
         }
@@ -170,7 +163,7 @@ class FloatingButtonService : Service() {
     private lateinit var floatingButton: TextView
     private lateinit var miniScreenView: LinearLayout
 
-    private lateinit var keyInputEditText: EditText
+    private lateinit var keyDisplayView: TextView
     private lateinit var timerBadgeView: TextView
     private lateinit var codeDisplayView: TextView
 
@@ -291,6 +284,7 @@ class FloatingButtonService : Service() {
             setPadding((16 * density).toInt(), (14 * density).toInt(), (16 * density).toInt(), (14 * density).toInt())
             background = getCardBackground()
 
+            // Header Row: Title & Close Button
             val headerRow = LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
@@ -313,36 +307,12 @@ class FloatingButtonService : Service() {
             headerRow.addView(closeBtn)
             addView(headerRow)
 
-            keyInputEditText = EditText(context).apply {
+            // Direct "Paste Secret Key" Button
+            val pasteButton = TextView(context).apply {
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     (42 * density).toInt()
                 ).apply { topMargin = (10 * density).toInt() }
-                hint = "Enter or Paste Key here..."
-                setHintTextColor(Color.parseColor("#64748B"))
-                setTextColor(Color.WHITE)
-                textSize = 12f
-                setPadding((10 * density).toInt(), 0, (10 * density).toInt(), 0)
-                background = getRoundedButtonBackground(Color.parseColor("#090D1A"), Color.parseColor("#334155"))
-                setText(currentSecretKey)
-                addTextChangedListener(object : TextWatcher {
-                    override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-                    override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                        currentSecretKey = s?.toString()?.trim() ?: ""
-                        val sharedPrefs = this@FloatingButtonService.getSharedPreferences("quickname_prefs", Context.MODE_PRIVATE)
-                        sharedPrefs.edit().putString("saved_2fa_secret", currentSecretKey).apply()
-                        updateLiveCodeAndTimer()
-                    }
-                    override fun afterTextChanged(s: Editable?) {}
-                })
-            }
-            addView(keyInputEditText)
-
-            val pasteButton = TextView(context).apply {
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    (38 * density).toInt()
-                ).apply { topMargin = (8 * density).toInt() }
                 text = "📋 Paste Secret Key"
                 setTextColor(Color.WHITE)
                 textSize = 13f
@@ -354,23 +324,37 @@ class FloatingButtonService : Service() {
                     val clip = clipboard.primaryClip?.getItemAt(0)?.text?.toString()
                     if (!clip.isNullOrBlank()) {
                         currentSecretKey = clip.trim().replace(" ", "").replace("-", "")
-                        keyInputEditText.setText(currentSecretKey)
                         val sharedPrefs = this@FloatingButtonService.getSharedPreferences("quickname_prefs", Context.MODE_PRIVATE)
                         sharedPrefs.edit().putString("saved_2fa_secret", currentSecretKey).apply()
+                        keyDisplayView.text = "Key: ${currentSecretKey.take(14)}..."
                         updateLiveCodeAndTimer()
-                        Toast.makeText(context, "Key Pasted!", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Secret Key Pasted!", Toast.LENGTH_SHORT).show()
                     } else {
-                        Toast.makeText(context, "Clipboard empty!", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Clipboard empty! Copy a 2FA key first.", Toast.LENGTH_SHORT).show()
                     }
                 }
             }
             addView(pasteButton)
 
+            // Key Preview Label (Non-editable so it never traps focus!)
+            keyDisplayView = TextView(context).apply {
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { topMargin = (6 * density).toInt() }
+                text = if (currentSecretKey.isNotBlank()) "Key: ${currentSecretKey.take(14)}..." else "No Key Pasted Yet"
+                setTextColor(Color.parseColor("#94A3B8"))
+                textSize = 11f
+                gravity = Gravity.CENTER
+            }
+            addView(keyDisplayView)
+
+            // Active Token & Timer Row
             val timerRow = LinearLayout(context).apply {
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply { topMargin = (12 * density).toInt() }
+                ).apply { topMargin = (10 * density).toInt() }
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
             }
@@ -393,11 +377,12 @@ class FloatingButtonService : Service() {
             timerRow.addView(timerBadgeView)
             addView(timerRow)
 
+            // 6-Digit Big Code Box
             codeDisplayView = TextView(context).apply {
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     (54 * density).toInt()
-                ).apply { topMargin = (10 * density).toInt() }
+                ).apply { topMargin = (8 * density).toInt() }
                 text = "------"
                 setTextColor(Color.WHITE)
                 textSize = 28f
@@ -408,6 +393,7 @@ class FloatingButtonService : Service() {
             }
             addView(codeDisplayView)
 
+            // 3 Action Buttons Row: [📋 Code] [🔑 Pass] [👤 Name]
             val actionsRow = LinearLayout(context).apply {
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
@@ -416,6 +402,7 @@ class FloatingButtonService : Service() {
                 orientation = LinearLayout.HORIZONTAL
             }
 
+            // Button 1: Copy 2FA Code
             val copyBtn = TextView(context).apply {
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1.1f)
                 text = "📋 Code"
@@ -436,6 +423,7 @@ class FloatingButtonService : Service() {
                 }
             }
 
+            // Button 2: Paste Saved Password (🔑)
             val passBtn = TextView(context).apply {
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1.0f).apply {
                     marginStart = (6 * density).toInt()
@@ -447,17 +435,21 @@ class FloatingButtonService : Service() {
                 gravity = Gravity.CENTER
                 background = getRoundedButtonBackground(Color.parseColor("#D97706"), Color.parseColor("#FBBF24"))
                 setOnClickListener {
+                    toggleMiniScreen() // Close window so background Meta form gets focus!
                     val sharedPrefs = this@FloatingButtonService.getSharedPreferences("quickname_prefs", Context.MODE_PRIVATE)
                     val savedPass = sharedPrefs.getString("saved_custom_password", "") ?: ""
                     if (savedPass.isNotBlank()) {
-                        QuickNameAccessibilityService.instance?.fillPassword(savedPass)
-                            ?: copyDirectly(savedPass, "Password Copied")
+                        postDelayed({
+                            QuickNameAccessibilityService.instance?.fillPassword(savedPass)
+                                ?: copyDirectly(savedPass, "Password Copied")
+                        }, 120)
                     } else {
                         Toast.makeText(context, "Set password in app first!", Toast.LENGTH_SHORT).show()
                     }
                 }
             }
 
+            // Button 3: Fill Name
             val nameBtn = TextView(context).apply {
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1.1f).apply {
                     marginStart = (6 * density).toInt()
@@ -469,9 +461,12 @@ class FloatingButtonService : Service() {
                 gravity = Gravity.CENTER
                 background = getRoundedButtonBackground(Color.parseColor("#1E293B"), Color.parseColor("#38BDF8"))
                 setOnClickListener {
+                    toggleMiniScreen() // Close window so Meta First Name box gets focus!
                     val generated = repository.generateName()
-                    QuickNameAccessibilityService.instance?.performAutoFill(generated)
-                        ?: copyDirectly(generated.fullName, "Accessibility disabled. Copied")
+                    postDelayed({
+                        QuickNameAccessibilityService.instance?.performAutoFill(generated)
+                            ?: copyDirectly(generated.fullName, "Accessibility disabled. Copied")
+                    }, 120)
                 }
             }
 
@@ -498,15 +493,10 @@ class FloatingButtonService : Service() {
         if (miniScreenView.visibility == View.VISIBLE) {
             miniScreenView.visibility = View.GONE
             liveUpdateHandler.removeCallbacks(liveUpdateRunnable)
-            layoutParams.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
-            windowManager.updateViewLayout(rootContainer, layoutParams)
         } else {
-            layoutParams.flags = WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
-            windowManager.updateViewLayout(rootContainer, layoutParams)
-
             val sharedPrefs = getSharedPreferences("quickname_prefs", Context.MODE_PRIVATE)
             currentSecretKey = sharedPrefs.getString("saved_2fa_secret", "") ?: ""
-            keyInputEditText.setText(currentSecretKey)
+            keyDisplayView.text = if (currentSecretKey.isNotBlank()) "Key: ${currentSecretKey.take(14)}..." else "No Key Pasted Yet"
 
             updateLiveCodeAndTimer()
             miniScreenView.visibility = View.VISIBLE
