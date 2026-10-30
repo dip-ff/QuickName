@@ -93,7 +93,7 @@ class QuickNameAccessibilityService : AccessibilityService() {
             showToast("Filled: ${name.fullName}")
             true
         } else {
-            fallbackToClipboard(name.fullName, "Autofill rejected by app")
+            fallbackToClipboard(name.fullName, "Autofill rejected by target app")
         }
     }
 
@@ -118,7 +118,7 @@ class QuickNameAccessibilityService : AccessibilityService() {
     private fun findEditableNodes(node: AccessibilityNodeInfo?, result: MutableList<AccessibilityNodeInfo>) {
         if (node == null) return
 
-        // IMPORTANT: Never autofill into our own QuickName floating window!
+        // CRITICAL FIX: Skip our own overlay completely!
         if (node.packageName?.toString() == packageName) return
 
         if (node.isEditable && node.isVisibleToUser) {
@@ -234,6 +234,7 @@ class FloatingButtonService : Service() {
             WindowManager.LayoutParams.TYPE_PHONE
         }
 
+        // FLAG_NOT_FOCUSABLE keeps Meta/Facebook background input focused always!
         layoutParams = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -307,7 +308,7 @@ class FloatingButtonService : Service() {
             headerRow.addView(closeBtn)
             addView(headerRow)
 
-            // Direct "Paste Secret Key" Button
+            // Direct "Paste Secret Key" Button (With Instant Clipboard Focus Hook)
             val pasteButton = TextView(context).apply {
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
@@ -320,23 +321,12 @@ class FloatingButtonService : Service() {
                 gravity = Gravity.CENTER
                 background = getRoundedButtonBackground(Color.parseColor("#1E293B"), Color.parseColor("#38BDF8"))
                 setOnClickListener {
-                    val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                    val clip = clipboard.primaryClip?.getItemAt(0)?.text?.toString()
-                    if (!clip.isNullOrBlank()) {
-                        currentSecretKey = clip.trim().replace(" ", "").replace("-", "")
-                        val sharedPrefs = this@FloatingButtonService.getSharedPreferences("quickname_prefs", Context.MODE_PRIVATE)
-                        sharedPrefs.edit().putString("saved_2fa_secret", currentSecretKey).apply()
-                        keyDisplayView.text = "Key: ${currentSecretKey.take(14)}..."
-                        updateLiveCodeAndTimer()
-                        Toast.makeText(context, "Secret Key Pasted!", Toast.LENGTH_SHORT).show()
-                    } else {
-                        Toast.makeText(context, "Clipboard empty! Copy a 2FA key first.", Toast.LENGTH_SHORT).show()
-                    }
+                    tryPasteKey()
                 }
             }
             addView(pasteButton)
 
-            // Key Preview Label (Non-editable so it never traps focus!)
+            // Key Preview Label
             keyDisplayView = TextView(context).apply {
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
@@ -423,7 +413,7 @@ class FloatingButtonService : Service() {
                 }
             }
 
-            // Button 2: Paste Saved Password (🔑)
+            // Button 2: Paste Saved Password
             val passBtn = TextView(context).apply {
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1.0f).apply {
                     marginStart = (6 * density).toInt()
@@ -435,7 +425,7 @@ class FloatingButtonService : Service() {
                 gravity = Gravity.CENTER
                 background = getRoundedButtonBackground(Color.parseColor("#D97706"), Color.parseColor("#FBBF24"))
                 setOnClickListener {
-                    toggleMiniScreen() // Close window so background Meta form gets focus!
+                    toggleMiniScreen() // Dismiss popup immediately
                     val sharedPrefs = this@FloatingButtonService.getSharedPreferences("quickname_prefs", Context.MODE_PRIVATE)
                     val savedPass = sharedPrefs.getString("saved_custom_password", "") ?: ""
                     if (savedPass.isNotBlank()) {
@@ -461,7 +451,7 @@ class FloatingButtonService : Service() {
                 gravity = Gravity.CENTER
                 background = getRoundedButtonBackground(Color.parseColor("#1E293B"), Color.parseColor("#38BDF8"))
                 setOnClickListener {
-                    toggleMiniScreen() // Close window so Meta First Name box gets focus!
+                    toggleMiniScreen() // Dismiss popup immediately
                     val generated = repository.generateName()
                     postDelayed({
                         QuickNameAccessibilityService.instance?.performAutoFill(generated)
@@ -475,6 +465,36 @@ class FloatingButtonService : Service() {
             actionsRow.addView(nameBtn)
             addView(actionsRow)
         }
+    }
+
+    private fun tryPasteKey() {
+        // Momentarily grant focus to bypass Android 10-14 background clipboard restriction
+        layoutParams.flags = WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+        windowManager.updateViewLayout(rootContainer, layoutParams)
+
+        rootContainer.postDelayed({
+            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            val clip = clipboard.primaryClip?.getItemAt(0)?.text?.toString()
+
+            // Restore FLAG_NOT_FOCUSABLE so Meta/Facebook retains input focus
+            layoutParams.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+            if (rootContainer.isAttachedToWindow) {
+                windowManager.updateViewLayout(rootContainer, layoutParams)
+            }
+
+            if (!clip.isNullOrBlank()) {
+                val cleaned = clip.trim().replace(" ", "").replace("-", "")
+                currentSecretKey = cleaned
+                val sharedPrefs = getSharedPreferences("quickname_prefs", Context.MODE_PRIVATE)
+                sharedPrefs.edit().putString("saved_2fa_secret", currentSecretKey).apply()
+
+                keyDisplayView.text = "Key: ${currentSecretKey.take(14)}..."
+                updateLiveCodeAndTimer()
+                Toast.makeText(this@FloatingButtonService, "Key Pasted Successfully!", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this@FloatingButtonService, "Clipboard is empty! Copy a key first.", Toast.LENGTH_SHORT).show()
+            }
+        }, 50)
     }
 
     private fun updateLiveCodeAndTimer() {
@@ -498,6 +518,7 @@ class FloatingButtonService : Service() {
             currentSecretKey = sharedPrefs.getString("saved_2fa_secret", "") ?: ""
             keyDisplayView.text = if (currentSecretKey.isNotBlank()) "Key: ${currentSecretKey.take(14)}..." else "No Key Pasted Yet"
 
+            // Auto-check clipboard on open: If a 2FA key was copied, suggest or read it
             updateLiveCodeAndTimer()
             miniScreenView.visibility = View.VISIBLE
             liveUpdateHandler.post(liveUpdateRunnable)
