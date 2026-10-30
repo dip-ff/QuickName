@@ -19,6 +19,8 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.text.Editable
+import android.text.TextWatcher
 import android.util.DisplayMetrics
 import android.view.Gravity
 import android.view.MotionEvent
@@ -27,6 +29,7 @@ import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.animation.OvershootInterpolator
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
@@ -154,7 +157,7 @@ class FloatingButtonService : Service() {
     private lateinit var miniScreenView: LinearLayout
 
     // UI elements inside mini screen
-    private lateinit var keyDisplayView: TextView
+    private lateinit var keyInputEditText: EditText
     private lateinit var timerBadgeView: TextView
     private lateinit var codeDisplayView: TextView
 
@@ -225,6 +228,7 @@ class FloatingButtonService : Service() {
             WindowManager.LayoutParams.TYPE_PHONE
         }
 
+        // Initially NOT FOCUSABLE so dragging doesn't interfere with system
         layoutParams = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -254,7 +258,7 @@ class FloatingButtonService : Service() {
             background = getGradientCircle()
         }
 
-        // 2. The Pop-up Mini Screen (Initially GONE)
+        // 2. The Pop-up Mini Screen
         miniScreenView = createMiniScreen(density)
 
         rootContainer.addView(floatingButton)
@@ -300,12 +304,38 @@ class FloatingButtonService : Service() {
             headerRow.addView(closeBtn)
             addView(headerRow)
 
-            // Paste Key Button
-            val pasteButton = TextView(context).apply {
+            // Secret Key Editable Input Box
+            keyInputEditText = EditText(context).apply {
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     (42 * density).toInt()
                 ).apply { topMargin = (10 * density).toInt() }
+                hint = "Enter or Paste Key here..."
+                setHintTextColor(Color.parseColor("#64748B"))
+                setTextColor(Color.WHITE)
+                textSize = 12f
+                setPadding((10 * density).toInt(), 0, (10 * density).toInt(), 0)
+                background = getRoundedButtonBackground(Color.parseColor("#090D1A"), Color.parseColor("#334155"))
+                setText(currentSecretKey)
+                addTextChangedListener(object : TextWatcher {
+                    override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                    override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                        currentSecretKey = s?.toString()?.trim() ?: ""
+                        val sharedPrefs = getSharedPreferences("quickname_prefs", Context.MODE_PRIVATE)
+                        sharedPrefs.edit().putString("saved_2fa_secret", currentSecretKey).apply()
+                        updateLiveCodeAndTimer()
+                    }
+                    override fun afterTextChanged(s: Editable?) {}
+                })
+            }
+            addView(keyInputEditText)
+
+            // Direct "Paste Secret Key" Button
+            val pasteButton = TextView(context).apply {
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    (38 * density).toInt()
+                ).apply { topMargin = (8 * density).toInt() }
                 text = "📋 Paste Secret Key"
                 setTextColor(Color.WHITE)
                 textSize = 13f
@@ -313,34 +343,22 @@ class FloatingButtonService : Service() {
                 gravity = Gravity.CENTER
                 background = getRoundedButtonBackground(Color.parseColor("#1E293B"), Color.parseColor("#38BDF8"))
                 setOnClickListener {
+                    // Read clipboard directly while focused
                     val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                     val clip = clipboard.primaryClip?.getItemAt(0)?.text?.toString()
                     if (!clip.isNullOrBlank()) {
-                        currentSecretKey = clip.trim()
+                        currentSecretKey = clip.trim().replace(" ", "").replace("-", "")
+                        keyInputEditText.setText(currentSecretKey)
                         val sharedPrefs = getSharedPreferences("quickname_prefs", Context.MODE_PRIVATE)
                         sharedPrefs.edit().putString("saved_2fa_secret", currentSecretKey).apply()
-                        keyDisplayView.text = "Key: ${currentSecretKey.take(14)}..."
                         updateLiveCodeAndTimer()
-                        Toast.makeText(context, "Secret Key Pasted!", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Key Pasted!", Toast.LENGTH_SHORT).show()
                     } else {
-                        Toast.makeText(context, "Clipboard is empty!", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Clipboard empty! Copy a key first.", Toast.LENGTH_SHORT).show()
                     }
                 }
             }
             addView(pasteButton)
-
-            // Key Preview Label
-            keyDisplayView = TextView(context).apply {
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply { topMargin = (6 * density).toInt() }
-                text = if (currentSecretKey.isNotBlank()) "Key: ${currentSecretKey.take(14)}..." else "No Key Pasted Yet"
-                setTextColor(Color.parseColor("#94A3B8"))
-                textSize = 11f
-                gravity = Gravity.CENTER
-            }
-            addView(keyDisplayView)
 
             // Active Token & Timer Row
             val timerRow = LinearLayout(context).apply {
@@ -454,10 +472,18 @@ class FloatingButtonService : Service() {
         if (miniScreenView.visibility == View.VISIBLE) {
             miniScreenView.visibility = View.GONE
             liveUpdateHandler.removeCallbacks(liveUpdateRunnable)
+
+            // 1. When closed: Keep FLAG_NOT_FOCUSABLE so dragging doesn't interfere with other apps
+            layoutParams.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+            windowManager.updateViewLayout(rootContainer, layoutParams)
         } else {
+            // 2. When opened: GIVE WINDOW FOCUS so Android allows reading clipboard & keyboard input!
+            layoutParams.flags = WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+            windowManager.updateViewLayout(rootContainer, layoutParams)
+
             val sharedPrefs = getSharedPreferences("quickname_prefs", Context.MODE_PRIVATE)
             currentSecretKey = sharedPrefs.getString("saved_2fa_secret", "") ?: ""
-            keyDisplayView.text = if (currentSecretKey.isNotBlank()) "Key: ${currentSecretKey.take(14)}..." else "No Key Pasted Yet"
+            keyInputEditText.setText(currentSecretKey)
 
             updateLiveCodeAndTimer()
             miniScreenView.visibility = View.VISIBLE
