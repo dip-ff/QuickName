@@ -3,6 +3,9 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+// Automatically increments version with every GitHub build
+val runNumber = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
+
 android {
     namespace = "com.quickname.floating"
     compileSdk = 34
@@ -11,8 +14,8 @@ android {
         applicationId = "com.quickname.floating"
         minSdk = 29
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = runNumber
+        versionName = "1.0.$runNumber"
     }
 
     compileOptions {
