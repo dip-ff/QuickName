@@ -1,601 +1,572 @@
-package com.quickname.floating.service
+package com.quickname.floating.ui
 
-import android.accessibilityservice.AccessibilityService
-import android.animation.ValueAnimator
-import android.annotation.SuppressLint
-import android.app.Notification
-import android.app.PendingIntent
-import android.app.Service
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
-import android.graphics.Color
-import android.graphics.PixelFormat
-import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.os.Handler
-import android.os.IBinder
-import android.os.Looper
-import android.text.Editable
-import android.text.TextWatcher
-import android.util.DisplayMetrics
-import android.view.Gravity
-import android.view.MotionEvent
-import android.view.View
-import android.view.WindowManager
-import android.view.accessibility.AccessibilityEvent
-import android.view.accessibility.AccessibilityNodeInfo
-import android.view.animation.OvershootInterpolator
-import android.widget.EditText
-import android.widget.LinearLayout
-import android.widget.TextView
+import android.provider.Settings
 import android.widget.Toast
-import androidx.core.app.NotificationCompat
-import com.quickname.floating.QuickNameApp
-import com.quickname.floating.data.GeneratedName
-import com.quickname.floating.data.NameRepository
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.quickname.floating.data.PreferencesManager
-import com.quickname.floating.ui.MainActivity
-import com.quickname.floating.ui.TotpGenerator
-import kotlin.math.abs
+import com.quickname.floating.service.FloatingButtonService
+import com.quickname.floating.service.QuickNameAccessibilityService
+import kotlinx.coroutines.delay
+import java.io.ByteArrayOutputStream
+import java.nio.ByteBuffer
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
 
-class QuickNameAccessibilityService : AccessibilityService() {
+val DarkBackground = Color(0xFF090D1A)
+val SurfaceDark = Color(0xFF10172A)
+val CardBorder = Color(0xFF1E293B)
+val ElectricBlue = Color(0xFF0066FF)
+val ElectricBlueLight = Color(0xFF38BDF8)
+val AccentGreen = Color(0xFF10B981)
+val TextPrimary = Color(0xFFF1F5F9)
+val TextSecondary = Color(0xFF94A3B8)
 
-    companion object {
-        var instance: QuickNameAccessibilityService? = null
-            private set
+object TotpGenerator {
+    private const val BASE32_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
 
-        val isServiceRunning: Boolean
-            get() = instance != null
-    }
-
-    override fun onServiceConnected() {
-        super.onServiceConnected()
-        instance = this
-    }
-
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
-    override fun onInterrupt() {}
-
-    override fun onDestroy() {
-        super.onDestroy()
-        instance = null
-    }
-
-    fun performAutoFill(name: GeneratedName): Boolean {
-        val rootNode = rootInActiveWindow ?: return fallbackToClipboard(name.fullName, "No active window")
-        val editableNodes = mutableListOf<AccessibilityNodeInfo>()
-        findEditableNodes(rootNode, editableNodes)
-
-        if (editableNodes.isEmpty()) {
-            return fallbackToClipboard(name.fullName, "No editable fields found")
-        }
-
-        var focusedIndex = editableNodes.indexOfFirst { it.isFocused }
-        if (focusedIndex == -1) focusedIndex = 0
-
-        var filledCount = 0
-        if (name.firstName.isNotEmpty() && focusedIndex < editableNodes.size) {
-            if (setText(editableNodes[focusedIndex], name.firstName)) filledCount++
-        }
-
-        if (name.lastName.isNotEmpty()) {
-            val nextIndex = focusedIndex + 1
-            if (nextIndex < editableNodes.size) {
-                if (setText(editableNodes[nextIndex], name.lastName)) filledCount++
-            } else if (filledCount == 0 && focusedIndex < editableNodes.size) {
-                setText(editableNodes[focusedIndex], name.fullName)
-                filledCount++
+    fun decodeBase32(encoded: String): ByteArray {
+        val cleaned = encoded.trim().replace(" ", "").replace("-", "").uppercase()
+        var buffer = 0
+        var bitsLeft = 0
+        val out = ByteArrayOutputStream()
+        for (c in cleaned) {
+            if (c == '=') break
+            val valChar = BASE32_CHARS.indexOf(c)
+            if (valChar < 0) continue
+            buffer = (buffer shl 5) or valChar
+            bitsLeft += 5
+            if (bitsLeft >= 8) {
+                bitsLeft -= 8
+                out.write((buffer shr bitsLeft) and 0xFF)
             }
         }
+        return out.toByteArray()
+    }
 
-        return if (filledCount > 0) {
-            showToast("Filled: ${name.fullName}")
-            true
-        } else {
-            fallbackToClipboard(name.fullName, "Autofill rejected by app")
+    fun generate2FACode(secretKey: String): String {
+        return try {
+            val keyBytes = decodeBase32(secretKey)
+            if (keyBytes.isEmpty()) return "------"
+
+            val timeStep = (System.currentTimeMillis() / 1000) / 30
+            val data = ByteBuffer.allocate(8).putLong(timeStep).array()
+
+            val mac = Mac.getInstance("HmacSHA1")
+            mac.init(SecretKeySpec(keyBytes, "RAW"))
+            val hash = mac.doFinal(data)
+
+            val offset = (hash[hash.size - 1].toInt() and 0x0F)
+            val binary = ((hash[offset].toInt() and 0x7F) shl 24) or
+                    ((hash[offset + 1].toInt() and 0xFF) shl 16) or
+                    ((hash[offset + 2].toInt() and 0xFF) shl 8) or
+                    (hash[offset + 3].toInt() and 0xFF)
+
+            val otp = binary % 1_000_000
+            String.format("%06d", otp)
+        } catch (e: Exception) {
+            "------"
         }
     }
 
-    fun fill2FACode(code: String): Boolean {
-        val rootNode = rootInActiveWindow ?: return fallbackToClipboard(code, "No active window")
-        val editableNodes = mutableListOf<AccessibilityNodeInfo>()
-        findEditableNodes(rootNode, editableNodes)
-
-        val targetNode = editableNodes.find { it.isFocused } ?: editableNodes.firstOrNull()
-        if (targetNode != null && setText(targetNode, code)) {
-            showToast("2FA Filled: $code")
-            copyToClipboard(code)
-            return true
-        }
-        return fallbackToClipboard(code, "Copied 2FA Code")
+    fun getRemainingSeconds(): Int {
+        return 30 - ((System.currentTimeMillis() / 1000) % 30).toInt()
     }
+}
 
-    private fun findEditableNodes(node: AccessibilityNodeInfo?, result: MutableList<AccessibilityNodeInfo>) {
-        if (node == null) return
-        if (node.isEditable && node.isVisibleToUser) result.add(node)
-        for (i in 0 until node.childCount) {
-            findEditableNodes(node.getChild(i), result)
-        }
-    }
+class MainActivity : ComponentActivity() {
+    private lateinit var prefs: PreferencesManager
 
-    private fun setText(node: AccessibilityNodeInfo, text: String): Boolean {
-        val args = Bundle().apply {
-            putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
-        }
-        return node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
-    }
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        prefs = PreferencesManager(this)
 
-    private fun copyToClipboard(text: String) {
-        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-        clipboard?.setPrimaryClip(ClipData.newPlainText("QuickName", text))
-    }
-
-    private fun fallbackToClipboard(text: String, reason: String): Boolean {
-        copyToClipboard(text)
-        Handler(Looper.getMainLooper()).post {
-            Toast.makeText(this, "$reason: '$text'", Toast.LENGTH_SHORT).show()
-        }
-        return false
-    }
-
-    private fun showToast(msg: String) {
-        Handler(Looper.getMainLooper()).post {
-            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+        setContent {
+            MaterialTheme(
+                colorScheme = darkColorScheme(
+                    primary = ElectricBlue,
+                    background = DarkBackground,
+                    surface = SurfaceDark
+                )
+            ) {
+                MainAppScreen(prefs = prefs)
+            }
         }
     }
 }
 
-class FloatingButtonService : Service() {
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun MainAppScreen(prefs: PreferencesManager) {
+    var selectedTab by remember { mutableIntStateOf(0) }
 
-    private lateinit var windowManager: WindowManager
-    private lateinit var rootContainer: LinearLayout
-    private lateinit var floatingButton: TextView
-    private lateinit var miniScreenView: LinearLayout
+    Scaffold(
+        topBar = {
+            Column(modifier = Modifier.background(DarkBackground)) {
+                TopAppBar(
+                    title = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(Brush.linearGradient(listOf(ElectricBlue, ElectricBlueLight))),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("QN", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text("Easy Work Assistant", fontWeight = FontWeight.Bold, color = TextPrimary)
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = DarkBackground)
+                )
 
-    // UI elements inside mini screen
-    private lateinit var keyInputEditText: EditText
-    private lateinit var timerBadgeView: TextView
-    private lateinit var codeDisplayView: TextView
-
-    private lateinit var layoutParams: WindowManager.LayoutParams
-    private lateinit var prefs: PreferencesManager
-    private lateinit var repository: NameRepository
-
-    private var currentSecretKey: String = ""
-    private val liveUpdateHandler = Handler(Looper.getMainLooper())
-
-    private val liveUpdateRunnable = object : Runnable {
-        override fun run() {
-            if (miniScreenView.visibility == View.VISIBLE) {
-                updateLiveCodeAndTimer()
-                liveUpdateHandler.postDelayed(this, 1000)
+                TabRow(
+                    selectedTabIndex = selectedTab,
+                    containerColor = SurfaceDark,
+                    contentColor = ElectricBlueLight
+                ) {
+                    Tab(
+                        selected = selectedTab == 0,
+                        onClick = { selectedTab = 0 },
+                        text = { Text("AutoFill & Settings", fontWeight = FontWeight.SemiBold) }
+                    )
+                    Tab(
+                        selected = selectedTab == 1,
+                        onClick = { selectedTab = 1 },
+                        text = { Text("2FA Live Code", fontWeight = FontWeight.SemiBold) }
+                    )
+                }
+            }
+        },
+        containerColor = DarkBackground
+    ) { padding ->
+        Box(modifier = Modifier.padding(padding)) {
+            if (selectedTab == 0) {
+                AutoFillDashboard(prefs = prefs)
+            } else {
+                TwoFactorLiveScreen()
             }
         }
     }
+}
 
-    companion object {
-        var isRunning = false
-            private set
+@Composable
+fun TwoFactorLiveScreen() {
+    val context = LocalContext.current
+    val sharedPrefs = context.getSharedPreferences("quickname_prefs", Context.MODE_PRIVATE)
+
+    var secretKey by remember { mutableStateOf(sharedPrefs.getString("saved_2fa_secret", "") ?: "") }
+    var currentCode by remember { mutableStateOf("------") }
+    var remainingSeconds by remember { mutableIntStateOf(TotpGenerator.getRemainingSeconds()) }
+
+    LaunchedEffect(secretKey) {
+        while (true) {
+            remainingSeconds = TotpGenerator.getRemainingSeconds()
+            if (secretKey.isNotBlank()) {
+                currentCode = TotpGenerator.generate2FACode(secretKey)
+            } else {
+                currentCode = "------"
+            }
+            delay(1000)
+        }
     }
 
-    override fun onBind(intent: Intent?): IBinder? = null
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        item {
+            Text(
+                "AUTHENTICATION SECRET KEY",
+                color = ElectricBlueLight,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp
+            )
+            Spacer(modifier = Modifier.height(8.dp))
 
-    override fun onCreate() {
-        super.onCreate()
-        isRunning = true
-        prefs = PreferencesManager(this)
-        repository = NameRepository(prefs)
-        windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+            OutlinedTextField(
+                value = secretKey,
+                onValueChange = {
+                    secretKey = it
+                    sharedPrefs.edit().putString("saved_2fa_secret", it).apply()
+                },
+                placeholder = { Text("e.g. GAXG 243E MR2X QZ...", color = TextSecondary) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(110.dp),
+                shape = RoundedCornerShape(14.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = ElectricBlue,
+                    unfocusedBorderColor = CardBorder,
+                    focusedContainerColor = SurfaceDark,
+                    unfocusedContainerColor = SurfaceDark
+                )
+            )
 
-        val sharedPrefs = getSharedPreferences("quickname_prefs", Context.MODE_PRIVATE)
-        currentSecretKey = sharedPrefs.getString("saved_2fa_secret", "") ?: ""
+            Spacer(modifier = Modifier.height(10.dp))
 
-        startAsForeground()
-        createFloatingView()
-    }
-
-    private fun startAsForeground() {
-        val notificationIntent = Intent(this, MainActivity::class.java)
-        val pendingIntent = PendingIntent.getActivity(
-            this, 0, notificationIntent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-
-        val notification: Notification = NotificationCompat.Builder(this, QuickNameApp.CHANNEL_ID)
-            .setContentTitle("QuickName 2FA & AutoFill")
-            .setContentText("Tap floating button for 2FA screen")
-            .setSmallIcon(android.R.drawable.ic_menu_edit)
-            .setContentIntent(pendingIntent)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .build()
-
-        startForeground(1001, notification)
-    }
-
-    @SuppressLint("ClickableViewAccessibility")
-    private fun createFloatingView() {
-        val density = resources.displayMetrics.density
-        val sizePx = (56 * density).toInt()
-
-        val layoutFlag = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-        } else {
-            @Suppress("DEPRECATION")
-            WindowManager.LayoutParams.TYPE_PHONE
-        }
-
-        // Initially NOT FOCUSABLE so dragging doesn't interfere with system
-        layoutParams = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            layoutFlag,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-            PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = Gravity.TOP or Gravity.START
-            x = 40
-            y = 250
-        }
-
-        rootContainer = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.START
-        }
-
-        // 1. Draggable Circular "QN" Button
-        floatingButton = TextView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(sizePx, sizePx)
-            text = "QN"
-            setTextColor(Color.WHITE)
-            textSize = 18f
-            typeface = Typeface.DEFAULT_BOLD
-            gravity = Gravity.CENTER
-            elevation = 20f
-            background = getGradientCircle()
-        }
-
-        // 2. The Pop-up Mini Screen
-        miniScreenView = createMiniScreen(density)
-
-        rootContainer.addView(floatingButton)
-        rootContainer.addView(miniScreenView)
-
-        setupTouchListener()
-        windowManager.addView(rootContainer, layoutParams)
-    }
-
-    private fun createMiniScreen(density: Float): LinearLayout {
-        val cardWidth = (290 * density).toInt()
-
-        return LinearLayout(this).apply {
-            layoutParams = LinearLayout.LayoutParams(cardWidth, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                topMargin = (10 * density).toInt()
-            }
-            orientation = LinearLayout.VERTICAL
-            visibility = View.GONE
-            elevation = 24f
-            setPadding((16 * density).toInt(), (14 * density).toInt(), (16 * density).toInt(), (14 * density).toInt())
-            background = getCardBackground()
-
-            // Header Row: Title & Close Button
-            val headerRow = LinearLayout(context).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-            }
-            val titleText = TextView(context).apply {
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-                text = "⚡ 2FA Live Code"
-                setTextColor(Color.parseColor("#38BDF8"))
-                textSize = 14f
-                typeface = Typeface.DEFAULT_BOLD
-            }
-            val closeBtn = TextView(context).apply {
-                text = "✕"
-                setTextColor(Color.parseColor("#94A3B8"))
-                textSize = 16f
-                setPadding(14, 0, 14, 0)
-                setOnClickListener { toggleMiniScreen() }
-            }
-            headerRow.addView(titleText)
-            headerRow.addView(closeBtn)
-            addView(headerRow)
-
-            // Secret Key Editable Input Box
-            keyInputEditText = EditText(context).apply {
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    (42 * density).toInt()
-                ).apply { topMargin = (10 * density).toInt() }
-                hint = "Enter or Paste Key here..."
-                setHintTextColor(Color.parseColor("#64748B"))
-                setTextColor(Color.WHITE)
-                textSize = 12f
-                setPadding((10 * density).toInt(), 0, (10 * density).toInt(), 0)
-                background = getRoundedButtonBackground(Color.parseColor("#090D1A"), Color.parseColor("#334155"))
-                setText(currentSecretKey)
-                addTextChangedListener(object : TextWatcher {
-                    override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-                    override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                        currentSecretKey = s?.toString()?.trim() ?: ""
-                        val sharedPrefs = getSharedPreferences("quickname_prefs", Context.MODE_PRIVATE)
-                        sharedPrefs.edit().putString("saved_2fa_secret", currentSecretKey).apply()
-                        updateLiveCodeAndTimer()
-                    }
-                    override fun afterTextChanged(s: Editable?) {}
-                })
-            }
-            addView(keyInputEditText)
-
-            // Direct "Paste Secret Key" Button
-            val pasteButton = TextView(context).apply {
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    (38 * density).toInt()
-                ).apply { topMargin = (8 * density).toInt() }
-                text = "📋 Paste Secret Key"
-                setTextColor(Color.WHITE)
-                textSize = 13f
-                typeface = Typeface.DEFAULT_BOLD
-                gravity = Gravity.CENTER
-                background = getRoundedButtonBackground(Color.parseColor("#1E293B"), Color.parseColor("#38BDF8"))
-                setOnClickListener {
-                    // Read clipboard directly while focused
-                    val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            Button(
+                onClick = {
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                     val clip = clipboard.primaryClip?.getItemAt(0)?.text?.toString()
                     if (!clip.isNullOrBlank()) {
-                        currentSecretKey = clip.trim().replace(" ", "").replace("-", "")
-                        keyInputEditText.setText(currentSecretKey)
-                        val sharedPrefs = getSharedPreferences("quickname_prefs", Context.MODE_PRIVATE)
-                        sharedPrefs.edit().putString("saved_2fa_secret", currentSecretKey).apply()
-                        updateLiveCodeAndTimer()
-                        Toast.makeText(context, "Key Pasted!", Toast.LENGTH_SHORT).show()
+                        secretKey = clip.trim().replace(" ", "").replace("-", "")
+                        sharedPrefs.edit().putString("saved_2fa_secret", secretKey).apply()
+                        Toast.makeText(context, "Key Saved for Floating Button!", Toast.LENGTH_SHORT).show()
                     } else {
-                        Toast.makeText(context, "Clipboard empty! Copy a key first.", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Clipboard empty", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = SurfaceDark),
+                border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder)
+            ) {
+                Icon(Icons.Default.ContentPaste, contentDescription = null, tint = ElectricBlueLight)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Paste & Save Key", color = TextPrimary)
+            }
+        }
+
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, CardBorder, RoundedCornerShape(16.dp))
+            ) {
+                Column(
+                    modifier = Modifier.padding(18.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Bolt, contentDescription = null, tint = ElectricBlueLight)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                "ACTIVE TOKEN",
+                                color = TextSecondary,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp,
+                                letterSpacing = 1.sp
+                            )
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = Color(0xFF0D3349)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(7.dp)
+                                        .clip(CircleShape)
+                                        .background(AccentGreen)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    "${remainingSeconds}s",
+                                    color = ElectricBlueLight,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    LinearProgressIndicator(
+                        progress = { remainingSeconds / 30f },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(6.dp)
+                            .clip(RoundedCornerShape(4.dp)),
+                        color = ElectricBlueLight,
+                        trackColor = Color(0xFF1E293B)
+                    )
+
+                    Spacer(modifier = Modifier.height(20.dp))
+
+                    val displayFormattedCode = if (currentCode.length == 6) {
+                        "${currentCode.substring(0, 3)} ${currentCode.substring(3, 6)}"
+                    } else currentCode
+
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color(0xFF090D1A),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, CardBorder, RoundedCornerShape(12.dp))
+                    ) {
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier.padding(vertical = 18.dp)
+                        ) {
+                            Text(
+                                text = displayFormattedCode,
+                                fontSize = 34.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                fontFamily = FontFamily.Monospace,
+                                letterSpacing = 6.sp,
+                                color = if (currentCode != "------") Color.White else TextSecondary
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(18.dp))
+
+                    Button(
+                        onClick = {
+                            if (currentCode != "------" && currentCode.isNotBlank()) {
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                clipboard.setPrimaryClip(ClipData.newPlainText("2FA Code", currentCode))
+                                Toast.makeText(context, "Copied: $currentCode", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(50.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue)
+                    ) {
+                        Icon(Icons.Default.ContentCopy, contentDescription = null, tint = Color.White)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Copy Code", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White)
                     }
                 }
             }
-            addView(pasteButton)
+        }
+    }
+}
 
-            // Active Token & Timer Row
-            val timerRow = LinearLayout(context).apply {
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply { topMargin = (12 * density).toInt() }
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-            }
-            val activeTokenLabel = TextView(context).apply {
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-                text = "ACTIVE CODE (30s)"
-                setTextColor(Color.parseColor("#94A3B8"))
-                textSize = 11f
-                typeface = Typeface.DEFAULT_BOLD
-            }
-            timerBadgeView = TextView(context).apply {
-                text = "● 30s"
-                setTextColor(Color.parseColor("#38BDF8"))
-                textSize = 12f
-                typeface = Typeface.DEFAULT_BOLD
-                setPadding(16, 4, 16, 4)
-                background = getRoundedButtonBackground(Color.parseColor("#0D3349"), Color.parseColor("#10B981"))
-            }
-            timerRow.addView(activeTokenLabel)
-            timerRow.addView(timerBadgeView)
-            addView(timerRow)
+@Composable
+fun AutoFillDashboard(prefs: PreferencesManager) {
+    val context = LocalContext.current
+    val sharedPrefs = context.getSharedPreferences("quickname_prefs", Context.MODE_PRIVATE)
 
-            // 6-Digit Big Code Box
-            codeDisplayView = TextView(context).apply {
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    (54 * density).toInt()
-                ).apply { topMargin = (10 * density).toInt() }
-                text = "------"
-                setTextColor(Color.WHITE)
-                textSize = 28f
-                typeface = Typeface.MONOSPACE
-                gravity = Gravity.CENTER
-                letterSpacing = 0.25f
-                background = getRoundedButtonBackground(Color.parseColor("#090D1A"), Color.parseColor("#1E293B"))
-            }
-            addView(codeDisplayView)
+    var isFloatingServiceRunning by remember { mutableStateOf(FloatingButtonService.isRunning) }
+    var customPasswordInput by remember { mutableStateOf(sharedPrefs.getString("saved_custom_password", "") ?: "") }
+    var customFirstInput by remember { mutableStateOf("") }
+    var customLastInput by remember { mutableStateOf("") }
 
-            // Action Buttons Row: Copy Code & Name AutoFill
-            val actionsRow = LinearLayout(context).apply {
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    (42 * density).toInt()
-                ).apply { topMargin = (12 * density).toInt() }
-                orientation = LinearLayout.HORIZONTAL
-            }
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        item {
+            PermissionCard(
+                title = "Display Over Other Apps",
+                isGranted = Settings.canDrawOverlays(context),
+                onAction = {
+                    val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}"))
+                    context.startActivity(intent)
+                }
+            )
+        }
 
-            val copyBtn = TextView(context).apply {
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f)
-                text = "📋 Copy Code"
-                setTextColor(Color.WHITE)
-                textSize = 13f
-                typeface = Typeface.DEFAULT_BOLD
-                gravity = Gravity.CENTER
-                background = getRoundedButtonBackground(Color.parseColor("#0066FF"), Color.parseColor("#38BDF8"))
-                setOnClickListener {
-                    val code = TotpGenerator.generate2FACode(currentSecretKey)
-                    if (code != "------" && code.isNotBlank()) {
-                        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        clipboard.setPrimaryClip(ClipData.newPlainText("2FA Code", code))
-                        Toast.makeText(context, "Copied: $code", Toast.LENGTH_SHORT).show()
-                    } else {
-                        Toast.makeText(context, "Paste a valid key first!", Toast.LENGTH_SHORT).show()
+        item {
+            PermissionCard(
+                title = "Accessibility AutoFill",
+                isGranted = QuickNameAccessibilityService.isServiceRunning,
+                onAction = {
+                    val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                    context.startActivity(intent)
+                }
+            )
+        }
+
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.border(1.dp, CardBorder, RoundedCornerShape(12.dp))
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(if (isFloatingServiceRunning) "Overlay Running" else "Overlay Stopped", color = TextPrimary)
+                    Button(
+                        onClick = {
+                            if (!Settings.canDrawOverlays(context)) {
+                                val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}"))
+                                context.startActivity(intent)
+                                return@Button
+                            }
+                            val serviceIntent = Intent(context, FloatingButtonService::class.java)
+                            if (isFloatingServiceRunning) {
+                                context.stopService(serviceIntent)
+                                isFloatingServiceRunning = false
+                            } else {
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                    context.startForegroundService(serviceIntent)
+                                } else {
+                                    context.startService(serviceIntent)
+                                }
+                                isFloatingServiceRunning = true
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = if (isFloatingServiceRunning) Color(0xFFEF4444) else ElectricBlue)
+                    ) {
+                        Text(if (isFloatingServiceRunning) "Stop" else "Start")
                     }
                 }
             }
-
-            val nameBtn = TextView(context).apply {
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 0.9f).apply {
-                    marginStart = (8 * density).toInt()
-                }
-                text = "👤 Fill Name"
-                setTextColor(Color.WHITE)
-                textSize = 13f
-                typeface = Typeface.DEFAULT_BOLD
-                gravity = Gravity.CENTER
-                background = getRoundedButtonBackground(Color.parseColor("#1E293B"), Color.parseColor("#38BDF8"))
-                setOnClickListener {
-                    val generated = repository.generateName()
-                    QuickNameAccessibilityService.instance?.performAutoFill(generated)
-                        ?: copyDirectly(generated.fullName, "Accessibility disabled. Copied")
-                }
-            }
-
-            actionsRow.addView(copyBtn)
-            actionsRow.addView(nameBtn)
-            addView(actionsRow)
         }
-    }
 
-    private fun updateLiveCodeAndTimer() {
-        val remaining = TotpGenerator.getRemainingSeconds()
-        timerBadgeView.text = "● ${remaining}s"
+        // --- NEW: Custom Password Setter Section ---
+        item {
+            Text("Set Custom Password (পাসওয়ার্ড সংরক্ষণ)", fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = ElectricBlueLight)
+            Card(
+                colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.border(1.dp, CardBorder, RoundedCornerShape(12.dp))
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        "আপনার পছন্দের পাসওয়ার্ড এখানে লিখে সেভ করুন। ফ্লোটিং স্ক্রিনের মাঝের 🔑 Pass বাটনে চাপলে সরাসরি এটি বসে যাবে।",
+                        color = TextSecondary,
+                        fontSize = 12.sp
+                    )
 
-        if (currentSecretKey.isNotBlank()) {
-            val code = TotpGenerator.generate2FACode(currentSecretKey)
-            codeDisplayView.text = if (code.length == 6) "${code.substring(0, 3)} ${code.substring(3, 6)}" else code
-        } else {
-            codeDisplayView.text = "------"
-        }
-    }
+                    OutlinedTextField(
+                        value = customPasswordInput,
+                        onValueChange = { customPasswordInput = it },
+                        label = { Text("Your Password") },
+                        placeholder = { Text("e.g. MyP@ssw0rd!2026") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
 
-    private fun toggleMiniScreen() {
-        if (miniScreenView.visibility == View.VISIBLE) {
-            miniScreenView.visibility = View.GONE
-            liveUpdateHandler.removeCallbacks(liveUpdateRunnable)
-
-            // 1. When closed: Keep FLAG_NOT_FOCUSABLE so dragging doesn't interfere with other apps
-            layoutParams.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
-            windowManager.updateViewLayout(rootContainer, layoutParams)
-        } else {
-            // 2. When opened: GIVE WINDOW FOCUS so Android allows reading clipboard & keyboard input!
-            layoutParams.flags = WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
-            windowManager.updateViewLayout(rootContainer, layoutParams)
-
-            val sharedPrefs = getSharedPreferences("quickname_prefs", Context.MODE_PRIVATE)
-            currentSecretKey = sharedPrefs.getString("saved_2fa_secret", "") ?: ""
-            keyInputEditText.setText(currentSecretKey)
-
-            updateLiveCodeAndTimer()
-            miniScreenView.visibility = View.VISIBLE
-            liveUpdateHandler.post(liveUpdateRunnable)
-        }
-    }
-
-    @SuppressLint("ClickableViewAccessibility")
-    private fun setupTouchListener() {
-        var initialX = 0
-        var initialY = 0
-        var initialTouchX = 0f
-        var initialTouchY = 0f
-        var isDragging = false
-
-        floatingButton.setOnTouchListener { v, event ->
-            when (event.action) {
-                MotionEvent.ACTION_DOWN -> {
-                    initialX = layoutParams.x
-                    initialY = layoutParams.y
-                    initialTouchX = event.rawX
-                    initialTouchY = event.rawY
-                    isDragging = false
-                    v.animate().scaleX(0.9f).scaleY(0.9f).setDuration(100).start()
-                    true
-                }
-                MotionEvent.ACTION_MOVE -> {
-                    val dx = (event.rawX - initialTouchX).toInt()
-                    val dy = (event.rawY - initialTouchY).toInt()
-                    if (abs(dx) > 10 || abs(dy) > 10) isDragging = true
-                    if (isDragging) {
-                        layoutParams.x = initialX + dx
-                        layoutParams.y = initialY + dy
-                        windowManager.updateViewLayout(rootContainer, layoutParams)
+                    Button(
+                        onClick = {
+                            if (customPasswordInput.isNotBlank()) {
+                                sharedPrefs.edit().putString("saved_custom_password", customPasswordInput).apply()
+                                Toast.makeText(context, "Password Saved Successfully!", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(context, "Password cannot be empty!", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706))
+                    ) {
+                        Icon(Icons.Default.VpnKey, contentDescription = null, tint = Color.White)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Save Password", color = Color.White)
                     }
-                    true
                 }
-                MotionEvent.ACTION_UP -> {
-                    v.animate().scaleX(1.0f).scaleY(1.0f).setDuration(120).start()
-                    if (!isDragging) {
-                        toggleMiniScreen()
-                    } else {
-                        snapToEdge()
+            }
+        }
+
+        // Custom Names Section
+        item {
+            Text("Import Custom Names", fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = ElectricBlueLight)
+            Card(
+                colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.border(1.dp, CardBorder, RoundedCornerShape(12.dp))
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = customFirstInput,
+                        onValueChange = { customFirstInput = it },
+                        label = { Text("First Names (কমা বা লাইনে লিখুন)") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = customLastInput,
+                        onValueChange = { customLastInput = it },
+                        label = { Text("Last Names (কমা বা লাইনে লিখুন)") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Button(
+                        onClick = {
+                            var added = 0
+                            if (customFirstInput.isNotBlank()) {
+                                customFirstInput.split(",", "\n").map { it.trim() }.filter { it.isNotEmpty() }.forEach { prefs.addCustomFirstName(it); added++ }
+                                customFirstInput = ""
+                            }
+                            if (customLastInput.isNotBlank()) {
+                                customLastInput.split(",", "\n").map { it.trim() }.filter { it.isNotEmpty() }.forEach { prefs.addCustomLastName(it); added++ }
+                                customLastInput = ""
+                            }
+                            Toast.makeText(context, "$added টি নাম সেভ হয়েছে!", Toast.LENGTH_SHORT).show()
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue)
+                    ) {
+                        Text("Import Names")
                     }
-                    true
-                }
-                else -> false
-            }
-        }
-    }
-
-    private fun snapToEdge() {
-        val metrics = DisplayMetrics()
-        windowManager.defaultDisplay.getMetrics(metrics)
-        val screenWidth = metrics.widthPixels
-        val viewWidth = floatingButton.width
-        val currentX = layoutParams.x
-        val targetX = if (currentX + viewWidth / 2 < screenWidth / 2) 30 else screenWidth - viewWidth - 30
-
-        val animator = ValueAnimator.ofInt(currentX, targetX).apply {
-            duration = 250
-            interpolator = OvershootInterpolator(1.2f)
-            addUpdateListener { animation ->
-                layoutParams.x = animation.animatedValue as Int
-                if (rootContainer.isAttachedToWindow) {
-                    windowManager.updateViewLayout(rootContainer, layoutParams)
                 }
             }
         }
-        animator.start()
     }
+}
 
-    private fun getGradientCircle(): GradientDrawable {
-        return GradientDrawable(
-            GradientDrawable.Orientation.TL_BR,
-            intArrayOf(Color.parseColor("#0066FF"), Color.parseColor("#0D3349"))
-        ).apply {
-            shape = GradientDrawable.OVAL
-            setStroke(3, Color.parseColor("#38BDF8"))
-        }
-    }
-
-    private fun getCardBackground(): GradientDrawable {
-        return GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            cornerRadius = 28f
-            setColor(Color.parseColor("#0F172A"))
-            setStroke(2, Color.parseColor("#1E293B"))
-        }
-    }
-
-    private fun getRoundedButtonBackground(bgColor: Int, strokeColor: Int): GradientDrawable {
-        return GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            cornerRadius = 20f
-            setColor(bgColor)
-            setStroke(1, strokeColor)
-        }
-    }
-
-    private fun copyDirectly(text: String, message: String) {
-        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        clipboard.setPrimaryClip(ClipData.newPlainText("QuickName", text))
-        Toast.makeText(this, "$message: '$text'", Toast.LENGTH_SHORT).show()
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        isRunning = false
-        liveUpdateHandler.removeCallbacks(liveUpdateRunnable)
-        if (::rootContainer.isInitialized && rootContainer.isAttachedToWindow) {
-            windowManager.removeView(rootContainer)
+@Composable
+fun PermissionCard(title: String, isGranted: Boolean, onAction: () -> Unit) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier.fillMaxWidth().border(1.dp, CardBorder, RoundedCornerShape(12.dp))
+    ) {
+        Row(
+            modifier = Modifier.padding(14.dp).fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(title, fontWeight = FontWeight.Bold, color = TextPrimary)
+            if (isGranted) {
+                Icon(Icons.Default.CheckCircle, contentDescription = null, tint = AccentGreen)
+            } else {
+                Button(onClick = onAction, colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue)) {
+                    Text("Grant", fontSize = 12.sp)
+                }
+            }
         }
     }
 }
