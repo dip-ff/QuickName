@@ -143,7 +143,7 @@ fun MainAppScreen(prefs: PreferencesManager) {
                                 Text("QN", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                             }
                             Spacer(modifier = Modifier.width(12.dp))
-                            Text("QuickName & 2FA Tool", fontWeight = FontWeight.Bold, color = TextPrimary)
+                            Text("Easy Work Assistant", fontWeight = FontWeight.Bold, color = TextPrimary)
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = DarkBackground)
@@ -157,7 +157,7 @@ fun MainAppScreen(prefs: PreferencesManager) {
                     Tab(
                         selected = selectedTab == 0,
                         onClick = { selectedTab = 0 },
-                        text = { Text("AutoFill Names", fontWeight = FontWeight.SemiBold) }
+                        text = { Text("AutoFill & Settings", fontWeight = FontWeight.SemiBold) }
                     )
                     Tab(
                         selected = selectedTab == 1,
@@ -242,8 +242,8 @@ fun TwoFactorLiveScreen() {
                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                     val clip = clipboard.primaryClip?.getItemAt(0)?.text?.toString()
                     if (!clip.isNullOrBlank()) {
-                        secretKey = clip
-                        sharedPrefs.edit().putString("saved_2fa_secret", clip).apply()
+                        secretKey = clip.trim().replace(" ", "").replace("-", "")
+                        sharedPrefs.edit().putString("saved_2fa_secret", secretKey).apply()
                         Toast.makeText(context, "Key Saved for Floating Button!", Toast.LENGTH_SHORT).show()
                     } else {
                         Toast.makeText(context, "Clipboard empty", Toast.LENGTH_SHORT).show()
@@ -383,7 +383,10 @@ fun TwoFactorLiveScreen() {
 @Composable
 fun AutoFillDashboard(prefs: PreferencesManager) {
     val context = LocalContext.current
+    val sharedPrefs = context.getSharedPreferences("quickname_prefs", Context.MODE_PRIVATE)
+
     var isFloatingServiceRunning by remember { mutableStateOf(FloatingButtonService.isRunning) }
+    var customPasswordInput by remember { mutableStateOf(sharedPrefs.getString("saved_custom_password", "") ?: "") }
     var customFirstInput by remember { mutableStateOf("") }
     var customLastInput by remember { mutableStateOf("") }
 
@@ -455,6 +458,51 @@ fun AutoFillDashboard(prefs: PreferencesManager) {
             }
         }
 
+        // Saved Custom Password Section
+        item {
+            Text("Set Custom Password (পাসওয়ার্ড সংরক্ষণ)", fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = ElectricBlueLight)
+            Card(
+                colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.border(1.dp, CardBorder, RoundedCornerShape(12.dp))
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        "আপনার পছন্দের পাসওয়ার্ড এখানে লিখে সেভ করুন। ফ্লোটিং স্ক্রিনের মাঝের 🔑 Pass বাটনে চাপলে সরাসরি এটি বসে যাবে।",
+                        color = TextSecondary,
+                        fontSize = 12.sp
+                    )
+
+                    OutlinedTextField(
+                        value = customPasswordInput,
+                        onValueChange = { customPasswordInput = it },
+                        label = { Text("Your Password") },
+                        placeholder = { Text("e.g. MyP@ssw0rd!2026") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+
+                    Button(
+                        onClick = {
+                            if (customPasswordInput.isNotBlank()) {
+                                sharedPrefs.edit().putString("saved_custom_password", customPasswordInput).apply()
+                                Toast.makeText(context, "Password Saved Successfully!", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(context, "Password cannot be empty!", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706))
+                    ) {
+                        Icon(Icons.Default.Lock, contentDescription = null, tint = Color.White)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Save Password", color = Color.White)
+                    }
+                }
+            }
+        }
+
+        // Custom Names Section
         item {
             Text("Import Custom Names", fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = ElectricBlueLight)
             Card(
