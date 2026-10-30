@@ -9,6 +9,8 @@
     <application
         android:name=".QuickNameApp"
         android:allowBackup="true"
+        android:icon="@drawable/app_logo"
+        android:roundIcon="@drawable/app_logo"
         android:label="Easy Work"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.NoActionBar">
