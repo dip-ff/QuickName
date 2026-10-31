@@ -5,6 +5,9 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -18,18 +21,26 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Create Permanent Fixed Keystore
+      - name: Lock Permanent Keystore in Repo
         run: |
+          if [ ! -f app/permanent_debug.keystore ]; then
+            keytool -genkeypair -v \
+              -keystore app/permanent_debug.keystore \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=QuickName, OU=Android, O=EasyWork, C=US"
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add app/permanent_debug.keystore
+            git commit -m "Permanently lock signing key" || true
+            git push || true
+          fi
           mkdir -p ~/.android
-          keytool -genkeypair -v \
-            -keystore ~/.android/debug.keystore \
-            -storepass android \
-            -alias androiddebugkey \
-            -keypass android \
-            -keyalg RSA \
-            -keysize 2048 \
-            -validity 10000 \
-            -dname "CN=QuickName, OU=Android, O=EasyWork, C=US"
+          cp app/permanent_debug.keystore ~/.android/debug.keystore
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
