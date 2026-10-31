@@ -31,6 +31,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.quickname.floating.data.NameRepository
 import com.quickname.floating.data.PreferencesManager
 import com.quickname.floating.service.FloatingButtonService
 import com.quickname.floating.service.QuickNameAccessibilityService
@@ -40,15 +41,14 @@ import java.nio.ByteBuffer
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
-// Private Colors to prevent any conflict with other files
-private val DarkBackground = Color(0xFF090D1A)
-private val SurfaceDark = Color(0xFF10172A)
-private val CardBorder = Color(0xFF1E293B)
-private val ElectricBlue = Color(0xFF0066FF)
-private val ElectricBlueLight = Color(0xFF38BDF8)
-private val AccentGreen = Color(0xFF10B981)
-private val TextPrimary = Color(0xFFF1F5F9)
-private val TextSecondary = Color(0xFF94A3B8)
+private val AppDarkBg = Color(0xFF090D1A)
+private val AppSurfaceDark = Color(0xFF10172A)
+private val AppCardBorder = Color(0xFF1E293B)
+private val AppElectricBlue = Color(0xFF0066FF)
+private val AppElectricLight = Color(0xFF38BDF8)
+private val AppAccentGreen = Color(0xFF10B981)
+private val AppTextPrimary = Color(0xFFF1F5F9)
+private val AppTextSecondary = Color(0xFF94A3B8)
 
 object TotpGenerator {
     private const val BASE32_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
@@ -112,9 +112,9 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme(
                 colorScheme = darkColorScheme(
-                    primary = ElectricBlue,
-                    background = DarkBackground,
-                    surface = SurfaceDark
+                    primary = AppElectricBlue,
+                    background = AppDarkBg,
+                    surface = AppSurfaceDark
                 )
             ) {
                 MainAppScreen(prefs = prefs)
@@ -130,7 +130,7 @@ fun MainAppScreen(prefs: PreferencesManager) {
 
     Scaffold(
         topBar = {
-            Column(modifier = Modifier.background(DarkBackground)) {
+            Column(modifier = Modifier.background(AppDarkBg)) {
                 TopAppBar(
                     title = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -138,22 +138,22 @@ fun MainAppScreen(prefs: PreferencesManager) {
                                 modifier = Modifier
                                     .size(36.dp)
                                     .clip(CircleShape)
-                                    .background(Brush.linearGradient(listOf(ElectricBlue, ElectricBlueLight))),
+                                    .background(Brush.linearGradient(listOf(AppElectricBlue, AppElectricLight))),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text("QN", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                             }
                             Spacer(modifier = Modifier.width(12.dp))
-                            Text("Easy Work Assistant", fontWeight = FontWeight.Bold, color = TextPrimary)
+                            Text("Easy Work Assistant", fontWeight = FontWeight.Bold, color = AppTextPrimary)
                         }
                     },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = DarkBackground)
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = AppDarkBg)
                 )
 
                 TabRow(
                     selectedTabIndex = selectedTab,
-                    containerColor = SurfaceDark,
-                    contentColor = ElectricBlueLight
+                    containerColor = AppSurfaceDark,
+                    contentColor = AppElectricLight
                 ) {
                     Tab(
                         selected = selectedTab == 0,
@@ -168,7 +168,7 @@ fun MainAppScreen(prefs: PreferencesManager) {
                 }
             }
         },
-        containerColor = DarkBackground
+        containerColor = AppDarkBg
     ) { padding ->
         Box(modifier = Modifier.padding(padding)) {
             if (selectedTab == 0) {
@@ -210,7 +210,7 @@ fun TwoFactorLiveScreen() {
         item {
             Text(
                 "AUTHENTICATION SECRET KEY",
-                color = ElectricBlueLight,
+                color = AppElectricLight,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 1.sp
@@ -223,16 +223,16 @@ fun TwoFactorLiveScreen() {
                     secretKey = it
                     sharedPrefs.edit().putString("saved_2fa_secret", it).apply()
                 },
-                placeholder = { Text("e.g. GAXG 243E MR2X QZ...", color = TextSecondary) },
+                placeholder = { Text("e.g. GAXG 243E MR2X QZ...", color = AppTextSecondary) },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(110.dp),
                 shape = RoundedCornerShape(14.dp),
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = ElectricBlue,
-                    unfocusedBorderColor = CardBorder,
-                    focusedContainerColor = SurfaceDark,
-                    unfocusedContainerColor = SurfaceDark
+                    focusedBorderColor = AppElectricBlue,
+                    unfocusedBorderColor = AppCardBorder,
+                    focusedContainerColor = AppSurfaceDark,
+                    unfocusedContainerColor = AppSurfaceDark
                 )
             )
 
@@ -252,22 +252,22 @@ fun TwoFactorLiveScreen() {
                 },
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = SurfaceDark),
-                border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder)
+                colors = ButtonDefaults.buttonColors(containerColor = AppSurfaceDark),
+                border = androidx.compose.foundation.BorderStroke(1.dp, AppCardBorder)
             ) {
-                Icon(Icons.Default.ContentPaste, contentDescription = null, tint = ElectricBlueLight)
+                Icon(Icons.Default.ContentPaste, contentDescription = null, tint = AppElectricLight)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Paste & Save Key", color = TextPrimary)
+                Text("Paste & Save Key", color = AppTextPrimary)
             }
         }
 
         item {
             Card(
-                colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                colors = CardDefaults.cardColors(containerColor = AppSurfaceDark),
                 shape = RoundedCornerShape(16.dp),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .border(1.dp, CardBorder, RoundedCornerShape(16.dp))
+                    .border(1.dp, AppCardBorder, RoundedCornerShape(16.dp))
             ) {
                 Column(
                     modifier = Modifier.padding(18.dp),
@@ -279,11 +279,11 @@ fun TwoFactorLiveScreen() {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Bolt, contentDescription = null, tint = ElectricBlueLight)
+                            Icon(Icons.Default.Bolt, contentDescription = null, tint = AppElectricLight)
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
                                 "ACTIVE TOKEN",
-                                color = TextSecondary,
+                                color = AppTextSecondary,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 12.sp,
                                 letterSpacing = 1.sp
@@ -302,12 +302,12 @@ fun TwoFactorLiveScreen() {
                                     modifier = Modifier
                                         .size(7.dp)
                                         .clip(CircleShape)
-                                        .background(AccentGreen)
+                                        .background(AppAccentGreen)
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
                                     "${remainingSeconds}s",
-                                    color = ElectricBlueLight,
+                                    color = AppElectricLight,
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold
                                 )
@@ -323,7 +323,7 @@ fun TwoFactorLiveScreen() {
                             .fillMaxWidth()
                             .height(6.dp)
                             .clip(RoundedCornerShape(4.dp)),
-                        color = ElectricBlueLight,
+                        color = AppElectricLight,
                         trackColor = Color(0xFF1E293B)
                     )
 
@@ -338,7 +338,7 @@ fun TwoFactorLiveScreen() {
                         color = Color(0xFF090D1A),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .border(1.dp, CardBorder, RoundedCornerShape(12.dp))
+                            .border(1.dp, AppCardBorder, RoundedCornerShape(12.dp))
                     ) {
                         Box(
                             contentAlignment = Alignment.Center,
@@ -350,7 +350,7 @@ fun TwoFactorLiveScreen() {
                                 fontWeight = FontWeight.ExtraBold,
                                 fontFamily = FontFamily.Monospace,
                                 letterSpacing = 6.sp,
-                                color = if (currentCode != "------") Color.White else TextSecondary
+                                color = if (currentCode != "------") Color.White else AppTextSecondary
                             )
                         }
                     }
@@ -369,7 +369,7 @@ fun TwoFactorLiveScreen() {
                             .fillMaxWidth()
                             .height(50.dp),
                         shape = RoundedCornerShape(14.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue)
+                        colors = ButtonDefaults.buttonColors(containerColor = AppElectricBlue)
                     ) {
                         Icon(Icons.Default.ContentCopy, contentDescription = null, tint = Color.White)
                         Spacer(modifier = Modifier.width(8.dp))
@@ -384,12 +384,13 @@ fun TwoFactorLiveScreen() {
 @Composable
 fun AutoFillDashboard(prefs: PreferencesManager) {
     val context = LocalContext.current
+    val repository = remember { NameRepository(prefs) }
     val sharedPrefs = context.getSharedPreferences("quickname_prefs", Context.MODE_PRIVATE)
 
     var isFloatingServiceRunning by remember { mutableStateOf(FloatingButtonService.isRunning) }
     var customPasswordInput by remember { mutableStateOf(sharedPrefs.getString("saved_custom_password", "") ?: "") }
-    var customFirstInput by remember { mutableStateOf("") }
-    var customLastInput by remember { mutableStateOf("") }
+    var bulkNamesInput by remember { mutableStateOf("") }
+    var remainingCount by remember { mutableIntStateOf(repository.getRemainingCount()) }
 
     LazyColumn(
         modifier = Modifier
@@ -421,16 +422,16 @@ fun AutoFillDashboard(prefs: PreferencesManager) {
 
         item {
             Card(
-                colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                colors = CardDefaults.cardColors(containerColor = AppSurfaceDark),
                 shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.border(1.dp, CardBorder, RoundedCornerShape(12.dp))
+                modifier = Modifier.border(1.dp, AppCardBorder, RoundedCornerShape(12.dp))
             ) {
                 Row(
                     modifier = Modifier.padding(16.dp).fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(if (isFloatingServiceRunning) "Overlay Running" else "Overlay Stopped", color = TextPrimary)
+                    Text(if (isFloatingServiceRunning) "Overlay Running" else "Overlay Stopped", color = AppTextPrimary)
                     Button(
                         onClick = {
                             if (!Settings.canDrawOverlays(context)) {
@@ -451,7 +452,7 @@ fun AutoFillDashboard(prefs: PreferencesManager) {
                                 isFloatingServiceRunning = true
                             }
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = if (isFloatingServiceRunning) Color(0xFFEF4444) else ElectricBlue)
+                        colors = ButtonDefaults.buttonColors(containerColor = if (isFloatingServiceRunning) Color(0xFFEF4444) else AppElectricBlue)
                     ) {
                         Text(if (isFloatingServiceRunning) "Stop" else "Start")
                     }
@@ -459,21 +460,89 @@ fun AutoFillDashboard(prefs: PreferencesManager) {
             }
         }
 
-        // Saved Custom Password Section
+        // --- NEW: 1-Time Use Bulk Name Importer ---
         item {
-            Text("Set Custom Password (পাসওয়ার্ড সংরক্ষণ)", fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = ElectricBlueLight)
+            Text("Single-Use Name Inventory (১ বার ব্যবহারযোগ্য নামের তালিকা)", fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = AppElectricLight)
             Card(
-                colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                colors = CardDefaults.cardColors(containerColor = AppSurfaceDark),
                 shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.border(1.dp, CardBorder, RoundedCornerShape(12.dp))
+                modifier = Modifier.border(1.dp, AppCardBorder, RoundedCornerShape(12.dp))
             ) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        "আপনার পছন্দের পাসওয়ার্ড এখানে লিখে সেভ করুন। ফ্লোটিং স্ক্রিনের মাঝের 🔑 Pass বাটনে চাপলে সরাসরি এটি বসে যাবে।",
-                        color = TextSecondary,
+                        "এখানে একসাথে ১০০টি নাম পেস্ট করুন (প্রতি লাইনে একটি করে নাম)। প্রতি ক্লিকে ১টি করে নাম খরচ হবে এবং তালিকা থেকে চিরতরে মুছে যাবে।",
+                        color = AppTextSecondary,
                         fontSize = 12.sp
                     )
 
+                    OutlinedTextField(
+                        value = bulkNamesInput,
+                        onValueChange = { bulkNamesInput = it },
+                        label = { Text("Paste 100 Names (প্রতি লাইনে একটি নাম)") },
+                        placeholder = { Text("John Smith\nMichael Johnson\nDavid Brown...") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(130.dp)
+                    )
+
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            onClick = {
+                                if (bulkNamesInput.isNotBlank()) {
+                                    val added = repository.addBulkNames(bulkNamesInput)
+                                    bulkNamesInput = ""
+                                    remainingCount = repository.getRemainingCount()
+                                    Toast.makeText(context, "$added টি নাম সফলভাবে যুক্ত হয়েছে!", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    Toast.makeText(context, "নাম পেস্ট করুন!", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(containerColor = AppElectricBlue)
+                        ) {
+                            Text("ইমপোর্ট করুন")
+                        }
+
+                        if (remainingCount > 0) {
+                            OutlinedButton(
+                                onClick = {
+                                    prefs.clearQueue()
+                                    remainingCount = 0
+                                    Toast.makeText(context, "তালিকা খালি করা হয়েছে!", Toast.LENGTH_SHORT).show()
+                                },
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFEF4444))
+                            ) {
+                                Text("রিসেট")
+                            }
+                        }
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (remainingCount > 0) Color(0xFF064E3B) else Color(0xFF7F1D1D),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = if (remainingCount > 0) "✅ ব্যবহারে প্রস্তুত আছে: $remainingCount টি নাম (১ বার ব্যবহার্য)" else "⚠️ কোনো নাম নেই! নাম শেষ হয়ে গেছে।",
+                            color = Color.White,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                        )
+                    }
+                }
+            }
+        }
+
+        // Custom Password Section
+        item {
+            Text("Set Custom Password (পাসওয়ার্ড সংরক্ষণ)", fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = AppElectricLight)
+            Card(
+                colors = CardDefaults.cardColors(containerColor = AppSurfaceDark),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.border(1.dp, AppCardBorder, RoundedCornerShape(12.dp))
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     OutlinedTextField(
                         value = customPasswordInput,
                         onValueChange = { customPasswordInput = it },
@@ -487,9 +556,7 @@ fun AutoFillDashboard(prefs: PreferencesManager) {
                         onClick = {
                             if (customPasswordInput.isNotBlank()) {
                                 sharedPrefs.edit().putString("saved_custom_password", customPasswordInput).apply()
-                                Toast.makeText(context, "Password Saved Successfully!", Toast.LENGTH_SHORT).show()
-                            } else {
-                                Toast.makeText(context, "Password cannot be empty!", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "Password Saved!", Toast.LENGTH_SHORT).show()
                             }
                         },
                         modifier = Modifier.fillMaxWidth(),
@@ -502,69 +569,26 @@ fun AutoFillDashboard(prefs: PreferencesManager) {
                 }
             }
         }
-
-        // Custom Names Section
-        item {
-            Text("Import Custom Names", fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = ElectricBlueLight)
-            Card(
-                colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.border(1.dp, CardBorder, RoundedCornerShape(12.dp))
-            ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedTextField(
-                        value = customFirstInput,
-                        onValueChange = { customFirstInput = it },
-                        label = { Text("First Names (কমা বা লাইনে লিখুন)") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    OutlinedTextField(
-                        value = customLastInput,
-                        onValueChange = { customLastInput = it },
-                        label = { Text("Last Names (কমা বা লাইনে লিখুন)") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Button(
-                        onClick = {
-                            var added = 0
-                            if (customFirstInput.isNotBlank()) {
-                                customFirstInput.split(",", "\n").map { it.trim() }.filter { it.isNotEmpty() }.forEach { prefs.addCustomFirstName(it); added++ }
-                                customFirstInput = ""
-                            }
-                            if (customLastInput.isNotBlank()) {
-                                customLastInput.split(",", "\n").map { it.trim() }.filter { it.isNotEmpty() }.forEach { prefs.addCustomLastName(it); added++ }
-                                customLastInput = ""
-                            }
-                            Toast.makeText(context, "$added টি নাম সেভ হয়েছে!", Toast.LENGTH_SHORT).show()
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue)
-                    ) {
-                        Text("Import Names")
-                    }
-                }
-            }
-        }
     }
 }
 
 @Composable
 fun PermissionCard(title: String, isGranted: Boolean, onAction: () -> Unit) {
     Card(
-        colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+        colors = CardDefaults.cardColors(containerColor = AppSurfaceDark),
         shape = RoundedCornerShape(12.dp),
-        modifier = Modifier.fillMaxWidth().border(1.dp, CardBorder, RoundedCornerShape(12.dp))
+        modifier = Modifier.fillMaxWidth().border(1.dp, AppCardBorder, RoundedCornerShape(12.dp))
     ) {
         Row(
             modifier = Modifier.padding(14.dp).fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text(title, fontWeight = FontWeight.Bold, color = TextPrimary)
+            Text(title, fontWeight = FontWeight.Bold, color = AppTextPrimary)
             if (isGranted) {
-                Icon(Icons.Default.CheckCircle, contentDescription = null, tint = AccentGreen)
+                Icon(Icons.Default.CheckCircle, contentDescription = null, tint = AppAccentGreen)
             } else {
-                Button(onClick = onAction, colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue)) {
+                Button(onClick = onAction, colors = ButtonDefaults.buttonColors(containerColor = AppElectricBlue)) {
                     Text("Grant", fontSize = 12.sp)
                 }
             }
