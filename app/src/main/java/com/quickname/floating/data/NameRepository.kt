@@ -2,6 +2,7 @@ package com.quickname.floating.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import kotlin.random.Random
 
 data class GeneratedName(
     val firstName: String,
@@ -17,7 +18,19 @@ class PreferencesManager(context: Context) {
     companion object {
         private const val KEY_TOTAL_GENERATED = "total_generated"
         private const val KEY_QUEUE = "single_use_name_queue"
+        private const val KEY_CUSTOM_FIRST = "custom_first_names"
+        private const val KEY_CUSTOM_LAST = "custom_last_names"
+        private const val KEY_ENABLE_FIRST = "enable_first_name"
+        private const val KEY_ENABLE_LAST = "enable_last_name"
     }
+
+    var enableFirstName: Boolean
+        get() = prefs.getBoolean(KEY_ENABLE_FIRST, true)
+        set(value) = prefs.edit().putBoolean(KEY_ENABLE_FIRST, value).apply()
+
+    var enableLastName: Boolean
+        get() = prefs.getBoolean(KEY_ENABLE_LAST, true)
+        set(value) = prefs.edit().putBoolean(KEY_ENABLE_LAST, value).apply()
 
     var buttonSizeDp: Int = 60
     var buttonColorHex: Long = 0xFF0066FF
@@ -28,6 +41,27 @@ class PreferencesManager(context: Context) {
 
     fun incrementTotalGenerated() {
         totalGeneratedCount = totalGeneratedCount + 1
+    }
+
+    // Custom Names Compatibility
+    fun getCustomFirstNames(): Set<String> {
+        return prefs.getStringSet(KEY_CUSTOM_FIRST, emptySet()) ?: emptySet()
+    }
+
+    fun addCustomFirstName(name: String) {
+        val current = getCustomFirstNames().toMutableSet()
+        current.add(name.trim())
+        prefs.edit().putStringSet(KEY_CUSTOM_FIRST, current).apply()
+    }
+
+    fun getCustomLastNames(): Set<String> {
+        return prefs.getStringSet(KEY_CUSTOM_LAST, emptySet()) ?: emptySet()
+    }
+
+    fun addCustomLastName(name: String) {
+        val current = getCustomLastNames().toMutableSet()
+        current.add(name.trim())
+        prefs.edit().putStringSet(KEY_CUSTOM_LAST, current).apply()
     }
 
     // Single-use names queue
@@ -54,7 +88,37 @@ class PreferencesManager(context: Context) {
 
 class NameRepository(private val prefs: PreferencesManager) {
 
-    // Removes and returns the next single-use name (Each name used only 1 time!)
+    private val defaultFirstNames = listOf(
+        "Liam", "Noah", "Oliver", "James", "Elijah", "William", "Henry", "Lucas", "Benjamin", "Theodore",
+        "Mateo", "Levi", "Sebastian", "Daniel", "Jack", "Michael", "Alexander", "Owen", "Asher", "Samuel",
+        "Ethan", "John", "David", "Joseph", "Jackson", "Julian", "Wyatt", "Carter", "Luke", "Grayson"
+    )
+
+    private val defaultLastNames = listOf(
+        "Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller", "Davis", "Rodriguez", "Martinez",
+        "Hernandez", "Lopez", "Gonzalez", "Wilson", "Anderson", "Thomas", "Taylor", "Moore", "Jackson", "Martin"
+    )
+
+    // Generates from single-use queue first; if empty, falls back to realistic random US names
+    fun generateName(): GeneratedName {
+        val queue = prefs.getImportedQueue()
+        if (queue.isNotEmpty()) {
+            val next = queue.removeAt(0)
+            prefs.setImportedQueue(queue)
+            prefs.incrementTotalGenerated()
+            return next
+        }
+
+        val allFirst = defaultFirstNames + prefs.getCustomFirstNames()
+        val allLast = defaultLastNames + prefs.getCustomLastNames()
+
+        val first = if (allFirst.isNotEmpty()) allFirst[Random.nextInt(allFirst.size)] else "John"
+        val last = if (allLast.isNotEmpty()) allLast[Random.nextInt(allLast.size)] else "Smith"
+
+        prefs.incrementTotalGenerated()
+        return GeneratedName(first, last)
+    }
+
     fun getNextSingleUseName(): Pair<GeneratedName?, Int> {
         val queue = prefs.getImportedQueue()
         if (queue.isEmpty()) {
