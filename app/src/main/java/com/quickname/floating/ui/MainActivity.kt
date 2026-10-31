@@ -11,8 +11,6 @@ import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -44,7 +42,6 @@ import java.nio.ByteBuffer
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
-// --- Luxury Cyber Dark Color Palette ---
 private val BgObsidian = Color(0xFF060913)
 private val SurfaceGlass = Color(0xFF0F172A)
 private val SurfaceGlassSubtle = Color(0xFF162036)
@@ -144,7 +141,6 @@ fun MainAppScreen(prefs: PreferencesManager) {
                     .background(BgObsidian)
                     .statusBarsPadding()
             ) {
-                // Sleek Luxury Header
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -200,7 +196,6 @@ fun MainAppScreen(prefs: PreferencesManager) {
                     }
                 }
 
-                // Modern Pill Segment Switcher
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -274,7 +269,6 @@ fun PillTabItem(
     }
 }
 
-// --- 2FA Live Screen (Cyberpunk / Modern TOTP) ---
 @Composable
 fun TwoFactorLiveScreen() {
     val context = LocalContext.current
@@ -303,21 +297,12 @@ fun TwoFactorLiveScreen() {
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item {
-            // Live OTP Display Card
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(22.dp))
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(SurfaceGlassSubtle, SurfaceGlass)
-                        )
-                    )
-                    .border(
-                        1.dp,
-                        Brush.verticalGradient(listOf(Color(0x5500E5FF), Color(0x111E293B))),
-                        RoundedCornerShape(22.dp)
-                    )
+                    .background(Brush.verticalGradient(listOf(SurfaceGlassSubtle, SurfaceGlass)))
+                    .border(1.dp, Brush.verticalGradient(listOf(Color(0x5500E5FF), Color(0x111E293B))), RoundedCornerShape(22.dp))
                     .padding(22.dp)
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -329,16 +314,9 @@ fun TwoFactorLiveScreen() {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.Bolt, contentDescription = null, tint = NeonCyan, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                "REAL-TIME TOTP",
-                                color = TextMutedSlate,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 12.sp,
-                                letterSpacing = 1.sp
-                            )
+                            Text("REAL-TIME TOTP", color = TextMutedSlate, fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 1.sp)
                         }
 
-                        // Countdown Pill
                         Surface(
                             shape = RoundedCornerShape(20.dp),
                             color = Color(0x2200E5FF),
@@ -356,13 +334,9 @@ fun TwoFactorLiveScreen() {
 
                     Spacer(modifier = Modifier.height(18.dp))
 
-                    // Progress Line
                     LinearProgressIndicator(
                         progress = { remainingSeconds / 30f },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(5.dp)
-                            .clip(RoundedCornerShape(3.dp)),
+                        modifier = Modifier.fillMaxWidth().height(5.dp).clip(RoundedCornerShape(3.dp)),
                         color = NeonCyan,
                         trackColor = Color(0xFF1E293B)
                     )
@@ -394,7 +368,6 @@ fun TwoFactorLiveScreen() {
 
                     Spacer(modifier = Modifier.height(20.dp))
 
-                    // Copy Button
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -421,7 +394,6 @@ fun TwoFactorLiveScreen() {
         }
 
         item {
-            // Secret Key Card
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -431,13 +403,7 @@ fun TwoFactorLiveScreen() {
                     .padding(20.dp)
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text(
-                        "SECRET AUTHENTICATION KEY",
-                        color = TextMutedSlate,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.sp
-                    )
+                    Text("SECRET AUTHENTICATION KEY", color = TextMutedSlate, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
 
                     OutlinedTextField(
                         value = secretKey,
@@ -483,7 +449,6 @@ fun TwoFactorLiveScreen() {
     }
 }
 
-// --- AutoFill & Main Dashboard ---
 @Composable
 fun AutoFillDashboard(prefs: PreferencesManager) {
     val context = LocalContext.current
@@ -501,22 +466,13 @@ fun AutoFillDashboard(prefs: PreferencesManager) {
             .padding(horizontal = 20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Hero Overlay Controller
         item {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(22.dp))
-                    .background(
-                        Brush.linearGradient(
-                            listOf(Color(0xFF0E1A36), SurfaceGlass)
-                        )
-                    )
-                    .border(
-                        1.dp,
-                        Brush.linearGradient(listOf(Color(0x440066FF), Color(0x1138BDF8))),
-                        RoundedCornerShape(22.dp)
-                    )
+                    .background(Brush.linearGradient(listOf(Color(0xFF0E1A36), SurfaceGlass)))
+                    .border(1.dp, Brush.linearGradient(listOf(Color(0x440066FF), Color(0x1138BDF8))), RoundedCornerShape(22.dp))
                     .padding(20.dp)
             ) {
                 Row(
@@ -579,7 +535,6 @@ fun AutoFillDashboard(prefs: PreferencesManager) {
             }
         }
 
-        // Permissions Health Tiles
         item {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 LuxuryPermissionTile(
@@ -602,7 +557,6 @@ fun AutoFillDashboard(prefs: PreferencesManager) {
             }
         }
 
-        // Single-Use Name Vault Card
         item {
             Box(
                 modifier = Modifier
@@ -618,13 +572,7 @@ fun AutoFillDashboard(prefs: PreferencesManager) {
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            "SINGLE-USE NAME VAULT",
-                            color = TextMutedSlate,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 11.5.sp,
-                            letterSpacing = 1.sp
-                        )
+                        Text("SINGLE-USE NAME VAULT", color = TextMutedSlate, fontWeight = FontWeight.Bold, fontSize = 11.5.sp, letterSpacing = 1.sp)
 
                         Surface(
                             shape = RoundedCornerShape(12.dp),
@@ -645,9 +593,7 @@ fun AutoFillDashboard(prefs: PreferencesManager) {
                         value = bulkNamesInput,
                         onValueChange = { bulkNamesInput = it },
                         placeholder = { Text("Paste up to 100 names (one per line)...\ne.g. John Smith\nDavid Brown", color = Color(0xFF64748B), fontSize = 12.5.sp) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(115.dp),
+                        modifier = Modifier.fillMaxWidth().height(115.dp),
                         shape = RoundedCornerShape(14.dp),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = NeonCyan,
@@ -696,7 +642,6 @@ fun AutoFillDashboard(prefs: PreferencesManager) {
             }
         }
 
-        // Custom Password Card
         item {
             Box(
                 modifier = Modifier
@@ -707,13 +652,7 @@ fun AutoFillDashboard(prefs: PreferencesManager) {
                     .padding(20.dp)
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(
-                        "PASSWORD VAULT (🔑 PASS BUTTON)",
-                        color = TextMutedSlate,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 11.5.sp,
-                        letterSpacing = 1.sp
-                    )
+                    Text("PASSWORD VAULT (🔑 PASS BUTTON)", color = TextMutedSlate, fontWeight = FontWeight.Bold, fontSize = 11.5.sp, letterSpacing = 1.sp)
 
                     OutlinedTextField(
                         value = customPasswordInput,
